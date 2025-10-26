@@ -8,6 +8,15 @@
 import Foundation
 
 public extension Command {
+    /// Execute a utility using the `env` command
+    ///
+    /// - Parameters:
+    ///   - utility: The name of the utility to run
+    ///   - arguments: Arguments for the utility
+    ///   - currentDirectory: The current working directory for execution
+    ///   - environment: The execution environment
+    ///
+    /// - Returns: A command that will run a utility using `env`
     static func env(
         utility: String,
         arguments: [String] = [],
@@ -20,13 +29,5 @@ public extension Command {
             currentDirectory: currentDirectory,
             environment: environment
         )
-    }
-
-    static func echo(
-        _ message: Any...,
-        currentDirectory: URL? = nil,
-        environment: [String : String]? = nil
-    ) -> Command {
-        Command.env(utility: "echo", arguments: message.map(String.init(describing:)))
     }
 }

@@ -101,8 +101,128 @@ struct SystemExecutorTests {
     }
 
     @Test
-    func stdout() async throws {
-        _ = try self.executor.run(.testScript("stdin-to.sh", with: "0"))
+    func runTimeoutThrows() throws {
+        do {
+            _ = try self.executor.run(
+                Command(executablePath: "/bin/sleep", arguments: ["5"]),
+                options: .init(timeout: 0.2)
+            )
+
+            // should have thrown a timeout
+            try #require(Bool(false))
+        } catch let error as ExecutionError {
+            switch error {
+            case .timeout:
+                // expected
+                break
+            default:
+                try #require(Bool(false))
+            }
+        }
+    }
+
+    @Test
+    func streamTimeoutThrows() async throws {
+        do {
+            for try await _ in self.executor.stream(
+                Command(executablePath: "/bin/sleep", arguments: ["5"]),
+                options: .init(timeout: 0.2)
+            ) {}
+
+            // should have thrown a timeout
+            try #require(Bool(false))
+        } catch let error as ExecutionError {
+            switch error {
+            case .timeout:
+                // expected
+                break
+            default:
+                print(error)
+                try #require(Bool(false))
+            }
+        }
+    }
+
+    @Test
+    func runCapturesStdout() throws {
+        let input = "hello stdout\n"
+        let stdin = Self.makeInputPipe(input)
+
+        let result = try self.executor.run(
+            .testScript("stdin-to.sh", with: "stdout"),
+            options: .init(standardInput: stdin, timeout: 10)
+        )
+
+        #expect(result.stdout == input)
+        #expect(result.stderr == "")
+    }
+
+    @Test
+    func runCapturesStderr() throws {
+        let input = "hello stderr\n"
+        let stdin = Self.makeInputPipe(input)
+
+        let result = try self.executor.run(
+            .testScript("stdin-to.sh", with: "stderr"),
+            options: .init(standardInput: stdin, timeout: 10)
+        )
+
+        #expect(result.stdout == "")
+        #expect(result.stderr == input)
+    }
+
+    @Test
+    func streamCapturesStdout() async throws {
+        let input = "stream hello stdout\n"
+        let stdin = Self.makeInputPipe(input)
+
+        var stdoutData = Data()
+        var stderrData = Data()
+
+        for try await chunk in self.executor.stream(
+            .testScript("stdin-to.sh", with: "stdout"),
+            options: .init(standardInput: stdin, timeout: 2)
+        ) {
+            switch chunk {
+            case .stdout(let data):
+                stdoutData.append(data)
+            case .stderr(let data):
+                stderrData.append(data)
+            }
+        }
+
+        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+
+        #expect(stdout == input)
+        #expect(stderr == "")
+    }
+
+    @Test
+    func streamCapturesStderr() async throws {
+        let input = "stream hello stderr\n"
+        let stdin = Self.makeInputPipe(input)
+
+        var stdoutData = Data()
+        var stderrData = Data()
+
+        for try await chunk in self.executor.stream(
+            .testScript("stdin-to.sh", with: "stderr"),
+            options: .init(standardInput: stdin)
+        ) {
+            switch chunk {
+            case .stdout(let data):
+                stdoutData.append(data)
+            case .stderr(let data):
+                stderrData.append(data)
+            }
+        }
+
+        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+
+        #expect(stdout == "")
+        #expect(stderr == input)
     }
 }
 
@@ -117,5 +237,16 @@ private extension Command {
         environment: Environment? = nil
     ) -> Command {
         Command(executableURL: .init(filePath: "/usr/bin/env"), environment: environment)
+    }
+}
+
+private extension SystemExecutorTests {
+    static func makeInputPipe(_ string: String) -> Pipe {
+        let pipe = Pipe()
+        if let data = string.data(using: .utf8) {
+            pipe.fileHandleForWriting.write(data)
+        }
+        try? pipe.fileHandleForWriting.close()
+        return pipe
     }
 }

@@ -14,7 +14,7 @@ public struct SystemExecutor: Executor {
 
     public init() {}
 
-    private func create(_ command: Command) -> Process {
+    private func create(_ command: Command, options: ExecutionOptions) -> Process {
         let process = Process()
         process.executableURL = command.executableURL
         process.arguments = command.arguments
@@ -26,40 +26,108 @@ public struct SystemExecutor: Executor {
         if let environment = command.environment {
             process.environment = environment.values
         }
+
+        if let standardInput = options.standardInput {
+            process.standardInput = standardInput
+        }
+
         return process
     }
 
-    public func stream(_ command: Command) -> AsyncThrowingStream<CommandOutput, Error> {
+    public func stream(
+        _ command: Command,
+        options: ExecutionOptions
+    ) -> AsyncThrowingStream<CommandOutput, Error> {
         AsyncThrowingStream(CommandOutput.self) { continuation in
-            let process = self.create(command)
-            let outputStream = process.streamOutput()
+            let process = self.create(command, options: options)
 
-            Task {
-                for try await output in outputStream {
-                    continuation.yield(output)
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            continuation.onTermination = { _ in
+                if process.isRunning { process.terminate() }
+            }
+
+            let stdoutHandle = stdoutPipe.fileHandleForReading
+            let stderrHandle = stderrPipe.fileHandleForReading
+
+            stdoutHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    continuation.yield(.stdout(data))
                 }
             }
 
-            process.waitUntilExit()
-            print(process.terminationReason)
-
-            switch process.terminationReason {
-            case .exit:
-                if process.terminationStatus != 0 {
-                    continuation.finish(
-                        throwing: TerminationError.exited(process.terminationStatus)
-                    )
+            stderrHandle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    continuation.yield(.stderr(data))
                 }
-            case .uncaughtSignal:
-                continuation.finish(throwing: TerminationError.uncaughtSignal)
-            default: break
+            }
+
+            final class TimeoutState: @unchecked Sendable {
+                var didTimeout = false
+                var task: Task<Void, Never>?
+            }
+            let timeoutState = TimeoutState()
+
+            let timeout = options.timeout
+            process.terminationHandler = { process in
+                // stop timeout task if still running
+                timeoutState.task?.cancel()
+                stdoutHandle.readabilityHandler = nil
+                stderrHandle.readabilityHandler = nil
+
+                switch process.terminationReason {
+                case .exit:
+                    if process.terminationStatus != 0 {
+                        continuation
+                            .finish(throwing: ExecutionError
+                                .nonZeroExitCode(process.terminationStatus))
+                    } else {
+                        continuation.finish()
+                    }
+                case .uncaughtSignal:
+                    if timeoutState.didTimeout {
+                        continuation.finish(throwing: ExecutionError.timeout(timeout))
+                    } else {
+                        continuation.finish(throwing: ExecutionError.uncaughtSignal)
+                    }
+                @unknown default:
+                    continuation.finish(throwing: ExecutionError.unknown)
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.finish(throwing: ExecutionError.executionFailed(error))
+                return
+            }
+
+            if options.timeout > 0 {
+                let timeout = options.timeout
+                let task = Task.detached { [weak process] in
+                    let nanos = UInt64(timeout * 1000000000)
+                    try? await Task.sleep(nanoseconds: nanos)
+                    if let process, process.isRunning {
+                        timeoutState.didTimeout = true
+                        process.terminate()
+                    }
+                }
+                timeoutState.task = task
             }
         }
     }
 
     @discardableResult
-    public func run(_ command: Command) throws(ExecutionError) -> ExecutionResult {
-        let process = self.create(command)
+    public func run(
+        _ command: Command,
+        options: ExecutionOptions
+    ) throws(ExecutionError) -> ExecutionResult {
+        let process = self.create(command, options: options)
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -72,7 +140,19 @@ public struct SystemExecutor: Executor {
             throw ExecutionError.executionFailed(error)
         }
 
-        process.waitUntilExit()
+        // Wait with timeout for termination
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
+
+        let timeoutResult = semaphore.wait(timeout: .now() + options.timeout)
+
+        if timeoutResult == .timedOut {
+            if process.isRunning {
+                process.terminate()
+            }
+
+            throw ExecutionError.timeout(options.timeout)
+        }
 
         let stdoutData: Data?
         let stderrData: Data?
@@ -103,46 +183,5 @@ public struct SystemExecutor: Executor {
             stdout: stdoutString,
             stderr: stderrString
         )
-    }
-}
-
-
-private extension Process {
-    func streamOutput() -> AsyncThrowingStream<CommandOutput, Error> {
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        self.standardOutput = stdoutPipe
-        self.standardError = stderrPipe
-
-        return AsyncThrowingStream(CommandOutput.self) { continuation in
-            continuation.onTermination = { _ in
-                self.terminate()
-            }
-
-            let stdoutHandle = stdoutPipe.fileHandleForReading
-            let stderrHandle = stderrPipe.fileHandleForReading
-
-            stdoutHandle.readabilityHandler = { handle in
-                let data = handle.availableData
-                if !data.isEmpty {
-                    continuation.yield(.stdout(data))
-                }
-            }
-
-            stderrHandle.readabilityHandler = { handle in
-                let data = handle.availableData
-                if !data.isEmpty {
-                    continuation.yield(.stdout(data))
-                }
-            }
-
-            do {
-                try self.run()
-                self.waitUntilExit()
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
-            }
-        }
     }
 }

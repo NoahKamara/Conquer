@@ -9,7 +9,7 @@ import Conquer
 import Foundation
 
 extension Command {
-    static func testScript(_ name: String, with arguments: String...) throws -> Command {
+    static func testScript(_ name: String, with arguments: String...) -> Command {
         let scriptURL = URL(filePath: #filePath)
             .deletingLastPathComponent()
             .appending(component: name)
