@@ -6,12 +6,18 @@
 
 import Foundation
 
+/// An `Executor` backed by `Process` that runs commands on the local system.
+///
+/// `SystemExecutor` launches child processes using Foundation's `Process`,
+/// supporting both incremental streaming via ``Executor/stream(_:options:)``
+/// and collected execution via ``Executor/run(_:options:)``.
 public struct SystemExecutor: Executor {
     enum TerminationError: Error, Equatable {
         case exited(Int32)
         case uncaughtSignal
     }
 
+    /// Create a new `SystemExecutor`.
     public init() {}
 
     private func create(_ command: Command, options: ExecutionOptions) -> Process {
@@ -34,6 +40,13 @@ public struct SystemExecutor: Executor {
         return process
     }
 
+    /// Run a command asynchronously and stream incremental output.
+    ///
+    /// - Parameters:
+    ///   - command: The command to run.
+    ///   - options: Options controlling execution behavior, such as timeout or standard input.
+    /// - Returns: A throwing stream emitting ``CommandOutput`` from stdout and stderr.
+    /// - Throws: ``ExecutionError`` when the process fails to spawn or terminates abnormally.
     public func stream(
         _ command: Command,
         options: ExecutionOptions
@@ -122,6 +135,14 @@ public struct SystemExecutor: Executor {
         }
     }
 
+    /// Run a command and return the collected result.
+    ///
+    /// - Parameters:
+    ///   - command: The command to run.
+    ///   - options: Options controlling execution behavior, such as timeout or standard input.
+    /// - Returns: The collected ``ExecutionResult``.
+    /// - Throws: ``ExecutionError`` when the process fails to spawn, times out,
+    ///   terminates with a non-zero exit code, or ends due to an uncaught signal.
     @discardableResult
     public func run(
         _ command: Command,

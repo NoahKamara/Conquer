@@ -6,22 +6,34 @@
 
 import Foundation
 
-/// A Command can be run using an Executor
+/// A description of a process invocation that can be executed by an `Executor`.
+///
+/// A `Command` encapsulates the executable to run, its arguments, an optional
+/// working directory, and an optional `Environment` to use for the spawned
+/// process. You typically construct a `Command` directly or via convenience
+/// helpers such as `Command.env(utility:arguments:currentDirectory:environment:)`.
 public struct Command: Sendable {
-    /// the url to the executable for the command
+    /// The file URL of the executable to launch.
     public let executableURL: URL
 
-    /// the arguments for the command
+    /// The arguments passed to the executable.
     public var arguments: [String]
 
-    /// the current working directory to use
-    /// when executing this command
+    /// The working directory to use when executing this command.
     public var currentDirectory: URL?
 
-    /// the environment variables to set
-    /// for the execution of this command
+    /// The environment to provide to the spawned process.
+    /// If `nil`, the current process environment is inherited.
     public var environment: Environment?
 
+    /// Create a `Command` from an executable URL.
+    ///
+    /// - Parameters:
+    ///   - executableURL: The file URL of the executable to run.
+    ///   - arguments: Arguments to pass to the executable. Defaults to an empty array.
+    ///   - currentDirectory: Optional working directory. If `nil`, inherits the current directory.
+    ///   - environment: Optional environment variables. If `nil`, inherits the current process
+    /// environment.
     public init(
         executableURL: URL,
         arguments: [String] = [],
@@ -34,6 +46,14 @@ public struct Command: Sendable {
         self.environment = environment
     }
 
+    /// Create a `Command` from an executable path.
+    ///
+    /// - Parameters:
+    ///   - executablePath: Absolute or relative path of the executable to run.
+    ///   - arguments: Arguments to pass to the executable. Defaults to an empty array.
+    ///   - currentDirectory: Optional working directory as a path string.
+    ///   - environment: Optional environment variables. If `nil`, inherits the current process
+    /// environment.
     public init(
         executablePath: String,
         arguments: [String] = [],
@@ -43,7 +63,7 @@ public struct Command: Sendable {
         self.init(
             executableURL: URL(filePath: executablePath),
             arguments: arguments,
-            currentDirectory: currentDirectory.map({ URL(filePath: $0) }),
+            currentDirectory: currentDirectory.map { URL(filePath: $0) },
             environment: environment
         )
     }

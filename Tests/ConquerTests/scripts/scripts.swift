@@ -1,8 +1,7 @@
 //
 //  scripts.swift
-//  Conquer
 //
-//  Created by Noah Kamara on 26.10.2025.
+//  Copyright © 2024 Noah Kamara.
 //
 
 import Conquer
@@ -21,7 +20,7 @@ extension Command {
     }
 }
 
-//extension Command {
+// extension Command {
 //    static func testExitCode(_ code: Int32) -> Command {
 //        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 //        let scriptURL = testsDirectory.appendingPathComponent("scripts/exit-code.sh")
@@ -51,4 +50,4 @@ extension Command {
 //            arguments: ["bash", scriptURL.path, String(code)]
 //        )
 //    }
-//}
+// }

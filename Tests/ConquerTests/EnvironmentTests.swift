@@ -1,13 +1,12 @@
 //
-//  File.swift
-//  Conquer
+//  EnvironmentTests.swift
 //
-//  Created by Noah Kamara on 26.10.2025.
+//  Copyright © 2024 Noah Kamara.
 //
 
-import Testing
 @testable import Conquer
 import Foundation
+import Testing
 
 @Suite("Environment")
 struct EnvironmentTests {

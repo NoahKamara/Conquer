@@ -1,8 +1,14 @@
-//import Testing
-//@testable import Conquer
-//import Foundation
 //
-//extension Command {
+//  ConquerTests.swift
+//
+//  Copyright © 2024 Noah Kamara.
+//
+
+// import Testing
+// @testable import Conquer
+// import Foundation
+//
+// extension Command {
 //    static func env(
 //        _ executableName: String,
 //        arguments: [String] = [],
@@ -16,9 +22,9 @@
 //            environment: environment
 //        )
 //    }
-//}
+// }
 //
-//extension Command {
+// extension Command {
 //    static func echo(
 //        _ message: Any...,
 //        currentDirectory: URL? = nil,
@@ -26,11 +32,11 @@
 //    ) -> Command {
 //        Command.env("echo", arguments: message.map(String.init(describing:)))
 //    }
-//}
+// }
 //
-//@Test(arguments: [
+// @Test(arguments: [
 //    Command.env("echo", arguments: ["hello"])
-//])
-//func example(command: Command) async throws {
+// ])
+// func example(command: Command) async throws {
 //    // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-//}
+// }

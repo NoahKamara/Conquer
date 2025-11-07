@@ -1,22 +1,21 @@
 //
-//  File.swift
-//  Conquer
+//  Command+env.swift
 //
-//  Created by Noah Kamara on 26.10.2025.
+//  Copyright © 2024 Noah Kamara.
 //
 
 import Foundation
 
 public extension Command {
-    /// Execute a utility using the `env` command
+    /// Construct a command that invokes a utility via `/usr/bin/env`.
     ///
     /// - Parameters:
-    ///   - utility: The name of the utility to run
-    ///   - arguments: Arguments for the utility
-    ///   - currentDirectory: The current working directory for execution
-    ///   - environment: The execution environment
+    ///   - utility: The name of the utility to run.
+    ///   - arguments: Arguments for the utility.
+    ///   - currentDirectory: Optional working directory for execution.
+    ///   - environment: Optional execution environment for the launched process.
     ///
-    /// - Returns: A command that will run a utility using `env`
+    /// - Returns: A command that will run a utility using `env`.
     static func env(
         utility: String,
         arguments: [String] = [],
