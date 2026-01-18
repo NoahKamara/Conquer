@@ -11,7 +11,7 @@ import Foundation.NSURL
 /// Conforming types implement both streaming and collected execution. Use
 /// ``stream(_:options:)`` to consume output incrementally, or ``run(_:options:)``
 /// to wait for completion and receive an ``ExecutionResult``.
-public protocol Executor {
+public protocol Executor: Sendable {
     /// Run a command asynchronously and stream the output.
     ///
     /// - Parameters:
