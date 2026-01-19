@@ -12,38 +12,31 @@ import Foundation
 /// constructed directly from a dictionary literal. Use it to provide a custom
 /// environment when executing a `Command`, or access the current process
 /// environment via ``Environment/current()``.
-public struct Environment: Sendable, Equatable, ExpressibleByDictionaryLiteral,
-    CustomStringConvertible
-{
-    private(set) var values: [String: String] = [:]
+public struct Environment: Sendable, Equatable, CustomStringConvertible {
+    private(set) var _values: [String: String] = [:]
 
     /// Create a new `Environment` with the given key-value pairs.
     /// - Parameter values: The initial variables to set.
     public init(values: [String: String] = [:]) {
-        self.values = values
-    }
-
-    /// Create a new `Environment` from a dictionary literal.
-    public init(dictionaryLiteral elements: (String, String)...) {
-        self.init(values: .init(uniqueKeysWithValues: elements))
+        self._values = values
     }
 
     /// Access or modify a variable by name.
     /// - Parameter name: The variable name.
     /// - Returns: The value if set; otherwise `nil`.
     public subscript(_ name: String) -> String? {
-        get { self.values[name] }
-        set { self.values[name] = newValue }
+        get { self._values[name] }
+        set { self._values[name] = newValue }
     }
 
     /// Whether the environment has no variables.
     public var isEmpty: Bool {
-        self.values.isEmpty
+        self._values.isEmpty
     }
 
     /// Returns `true` if a variable with the given name exists.
     public func contains(_ name: String) -> Bool {
-        self.values.keys.contains(name)
+        self._values.keys.contains(name)
     }
 
     /// The current process environment
@@ -53,6 +46,13 @@ public struct Environment: Sendable, Equatable, ExpressibleByDictionaryLiteral,
 
     /// A human-readable representation of the environment for debugging.
     public var description: String {
-        "Environment(\(self.values))"
+        "Environment(\(self._values))"
+    }
+}
+
+extension Environment: ExpressibleByDictionaryLiteral {
+    /// Create a new `Environment` from a dictionary literal.
+    public init(dictionaryLiteral elements: (String, String)...) {
+        self.init(values: .init(uniqueKeysWithValues: elements))
     }
 }

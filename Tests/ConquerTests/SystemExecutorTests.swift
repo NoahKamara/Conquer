@@ -47,13 +47,38 @@ struct SystemExecutorTests {
             // should have thrown an error
             try #require(Bool(false))
         } catch let error as ExecutionError {
-            guard case .nonZeroExitCode(let exitCode) = error else {
+            guard case .nonZeroExitCode(let exitCode, let stdout, let stderr) = error else {
                 // must be non-zero error
                 try #require(Bool(false))
                 return
             }
 
             #expect(exitCode == code)
+            // stdout and stderr are now guaranteed to be strings
+        }
+    }
+
+    @Test
+    func nonZeroExitCodeIncludesOutput() throws {
+        do {
+            // Use a command that produces output and exits with non-zero code
+            try self.executor.run(Command(
+                executablePath: "/bin/sh",
+                arguments: ["-c", "echo 'error output' >&2; echo 'stdout output'; exit 42"]
+            ))
+
+            // should have thrown an error
+            try #require(Bool(false))
+        } catch let error as ExecutionError {
+            guard case .nonZeroExitCode(let exitCode, let stdout, let stderr) = error else {
+                // must be non-zero error
+                try #require(Bool(false))
+                return
+            }
+
+            #expect(exitCode == 42)
+            #expect(stdout == "stdout output\n")
+            #expect(stderr == "error output\n")
         }
     }
 
@@ -223,6 +248,48 @@ struct SystemExecutorTests {
 
         #expect(stdout == "")
         #expect(stderr == input)
+    }
+
+    @Test
+    func streamNonZeroExitCodeIncludesOutput() async throws {
+        var collectedStdout = Data()
+        var collectedStderr = Data()
+
+        do {
+            // Use a command that produces output and exits with non-zero code
+            for try await chunk in self.executor.stream(
+                Command(
+                    executablePath: "/bin/sh",
+                    arguments: ["-c", "echo 'stream stdout'; echo 'stream stderr' >&2; exit 1"]
+                )
+            ) {
+                switch chunk {
+                case .stdout(let data):
+                    collectedStdout.append(data)
+                case .stderr(let data):
+                    collectedStderr.append(data)
+                }
+            }
+
+            // should have thrown an error
+            try #require(Bool(false))
+        } catch let error as ExecutionError {
+            guard case .nonZeroExitCode(let exitCode, let stdout, let stderr) = error else {
+                // must be non-zero error
+                try #require(Bool(false))
+                return
+            }
+
+            #expect(exitCode == 1)
+            #expect(stdout == "stream stdout\n")
+            #expect(stderr == "stream stderr\n")
+
+            // Also verify we collected the same output via streaming
+            let collectedStdoutString = String(data: collectedStdout, encoding: .utf8) ?? ""
+            let collectedStderrString = String(data: collectedStderr, encoding: .utf8) ?? ""
+            #expect(collectedStdoutString == "stream stdout\n")
+            #expect(collectedStderrString == "stream stderr\n")
+        }
     }
 }
 

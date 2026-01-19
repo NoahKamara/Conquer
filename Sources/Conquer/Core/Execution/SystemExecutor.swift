@@ -11,7 +11,7 @@ import Foundation
 /// `SystemExecutor` launches child processes using Foundation's `Process`,
 /// supporting both incremental streaming via ``Executor/stream(_:options:)``
 /// and collected execution via ``Executor/run(_:options:)``.
-public struct SystemExecutor: Executor {
+public struct SystemExecutor: Sendable, Executor {
     enum TerminationError: Error, Equatable {
         case exited(Int32)
         case uncaughtSignal
@@ -30,7 +30,7 @@ public struct SystemExecutor: Executor {
         }
 
         if let environment = command.environment {
-            process.environment = environment.values
+            process.environment = environment._values
         }
 
         if let standardInput = options.standardInput {
@@ -66,17 +66,47 @@ public struct SystemExecutor: Executor {
             let stdoutHandle = stdoutPipe.fileHandleForReading
             let stderrHandle = stderrPipe.fileHandleForReading
 
+            // Actor to safely collect output data from concurrent handlers
+            actor OutputCollector {
+                var stdoutData = Data()
+                var stderrData = Data()
+
+                func appendStdout(_ data: Data) {
+                    self.stdoutData.append(data)
+                }
+
+                func appendStderr(_ data: Data) {
+                    self.stderrData.append(data)
+                }
+
+                func getStdoutString() -> String {
+                    String(data: self.stdoutData, encoding: .utf8) ?? ""
+                }
+
+                func getStderrString() -> String {
+                    String(data: self.stderrData, encoding: .utf8) ?? ""
+                }
+            }
+
+            let outputCollector = OutputCollector()
+
             stdoutHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
-                    continuation.yield(.stdout(data))
+                    Task {
+                        await outputCollector.appendStdout(data)
+                        continuation.yield(.stdout(data))
+                    }
                 }
             }
 
             stderrHandle.readabilityHandler = { handle in
                 let data = handle.availableData
                 if !data.isEmpty {
-                    continuation.yield(.stderr(data))
+                    Task {
+                        await outputCollector.appendStderr(data)
+                        continuation.yield(.stderr(data))
+                    }
                 }
             }
 
@@ -93,23 +123,34 @@ public struct SystemExecutor: Executor {
                 stdoutHandle.readabilityHandler = nil
                 stderrHandle.readabilityHandler = nil
 
-                switch process.terminationReason {
-                case .exit:
-                    if process.terminationStatus != 0 {
-                        continuation
-                            .finish(throwing: ExecutionError
-                                .nonZeroExitCode(process.terminationStatus))
-                    } else {
-                        continuation.finish()
+                Task {
+                    let stdoutString = await outputCollector.getStdoutString()
+                    let stderrString = await outputCollector.getStderrString()
+
+                    switch process.terminationReason {
+                    case .exit:
+                        if process.terminationStatus != 0 {
+                            continuation
+                                .finish(throwing: ExecutionError
+                                    .nonZeroExitCode(
+                                        process.terminationStatus,
+                                        stdout: stdoutString,
+                                        stderr: stderrString
+                                    ))
+                        } else {
+                            continuation.finish()
+                        }
+                    case .uncaughtSignal:
+                        if timeoutState.didTimeout {
+                            continuation.finish(throwing: ExecutionError.timeout(timeout))
+                        } else {
+                            continuation
+                                .finish(throwing: ExecutionError
+                                    .uncaughtSignal(process.terminationStatus))
+                        }
+                    @unknown default:
+                        continuation.finish(throwing: ExecutionError.unknown)
                     }
-                case .uncaughtSignal:
-                    if timeoutState.didTimeout {
-                        continuation.finish(throwing: ExecutionError.timeout(timeout))
-                    } else {
-                        continuation.finish(throwing: ExecutionError.uncaughtSignal)
-                    }
-                @unknown default:
-                    continuation.finish(throwing: ExecutionError.unknown)
                 }
             }
 
@@ -185,19 +226,23 @@ public struct SystemExecutor: Executor {
             throw ExecutionError.failedToReadOutput(error)
         }
 
+        let stdoutString = String(data: stdoutData ?? Data(), encoding: .utf8) ?? ""
+        let stderrString = String(data: stderrData ?? Data(), encoding: .utf8) ?? ""
+
         switch process.terminationReason {
         case .exit:
             if process.terminationStatus != 0 {
-                throw ExecutionError.nonZeroExitCode(process.terminationStatus)
+                throw ExecutionError.nonZeroExitCode(
+                    process.terminationStatus,
+                    stdout: stdoutString,
+                    stderr: stderrString
+                )
             }
         case .uncaughtSignal:
-            throw ExecutionError.uncaughtSignal
+            throw ExecutionError.uncaughtSignal(process.terminationStatus)
         @unknown default:
             throw ExecutionError.unknown
         }
-
-        let stdoutString = String(data: stdoutData ?? Data(), encoding: .utf8) ?? ""
-        let stderrString = String(data: stderrData ?? Data(), encoding: .utf8) ?? ""
 
         return ExecutionResult(
             exitCode: process.terminationStatus,
